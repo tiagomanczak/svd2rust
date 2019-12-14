@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Support of field arrays
+
 ### Fixed
 
 - Properly use of default RegisterProperties.
