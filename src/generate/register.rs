@@ -346,22 +346,7 @@ pub fn fields(
 
             let sc = &f.sc;
             if let Some((first, dim, increment, suffixes)) = f.dim.clone() {
-                let mut offset_calc = if first != 0 {
-                    let first = util::unsuffixed(first as u64);
-                    quote! { (n - #first) }
-                } else {
-                    quote! { n }
-                };
-                if increment != 1 {
-                    let increment = util::unsuffixed(increment as u64);
-                    offset_calc = quote! { #offset_calc * #increment };
-                }
-                offset_calc = if offset !=0 {
-                    let offset = &util::unsuffixed(offset);
-                    quote! { let o = #offset_calc + #offset; }
-                } else {
-                    quote! { let o = #offset_calc; }
-                };
+                let offset_calc = calculate_offset(quote!{ n }, first, increment, offset);
                 let value = quote! { ((self.bits >> o) & #mask) #cast };
                 let doc = &f.description;
                 r_impl_items.push(quote! {
@@ -593,22 +578,7 @@ pub fn fields(
             }
 
             proxy_items.push(if let Some((first, _, increment, _)) = f.dim {
-                let mut offset_calc = if first != 0 {
-                    let first = util::unsuffixed(first as u64);
-                    quote! { (self.n - #first) }
-                } else {
-                    quote! { self.n }
-                };
-                if increment != 1 {
-                    let increment = util::unsuffixed(increment as u64);
-                    offset_calc = quote! { #offset_calc * #increment };
-                }
-                offset_calc = if offset !=0 {
-                    let offset = &util::unsuffixed(offset);
-                    quote! { let o = #offset_calc + #offset; }
-                } else {
-                    quote! { let o = #offset_calc; }
-                };
+                let offset_calc = calculate_offset(quote!{ self.n }, first, increment, offset);
                 quote! {
                     ///Writes raw bits to the field
                     #[inline(always)]
@@ -714,6 +684,29 @@ fn unsafety(write_constraint: Option<&WriteConstraint>, width: u32) -> Option<Id
             None
         }
         _ => Some(Ident::new("unsafe", Span::call_site())),
+    }
+}
+
+fn calculate_offset(n: TokenStream, first: u32, increment: u32, offset: u64) -> TokenStream {
+    let mut res = if first != 0 {
+        let first = util::unsuffixed(first as u64);
+        quote! { #n - #first }
+    } else {
+        quote! { #n }
+    };
+    if increment != 1 {
+        let increment = util::unsuffixed(increment as u64);
+        res = if first != 0 {
+            quote! { (#res) * #increment }
+        } else {
+            quote! { #res * #increment }
+        };
+    }
+    if offset !=0 {
+        let offset = &util::unsuffixed(offset);
+        quote! { let o = #res + #offset; }
+    } else {
+        quote! { let o = #res; }
     }
 }
 
