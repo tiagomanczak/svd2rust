@@ -346,14 +346,13 @@ pub fn fields(
 
             let sc = &f.sc;
             if let Some((first, dim, increment, suffixes)) = f.dim.clone() {
-                let offset_calc = calculate_offset(quote!{ n }, first, increment, offset);
-                let value = quote! { ((self.bits >> o) & #mask) #cast };
+                let offset_calc = calculate_offset(first, increment, offset);
+                let value = quote! { ((self.bits >> #offset_calc) & #mask) #cast };
                 let doc = &f.description;
                 r_impl_items.push(quote! {
                     #[doc = #doc]
                     #[inline(always)]
                     pub unsafe fn #sc(&self, n: u32) -> #_pc_r {
-                        #offset_calc
                         #_pc_r::new( #value )
                     }
                 });
@@ -577,14 +576,12 @@ pub fn fields(
                 });
             }
 
-            proxy_items.push(if let Some((first, _, increment, _)) = f.dim {
-                let offset_calc = calculate_offset(quote!{ self.n }, first, increment, offset);
+            proxy_items.push(if f.dim.is_some() {
                 quote! {
                     ///Writes raw bits to the field
                     #[inline(always)]
                     pub #unsafety fn #bits(self, value: #fty) -> &'a mut W {
-                        #offset_calc
-                        self.w.bits = (self.w.bits & !(#mask << o)) | (((value as #rty) & #mask) << o);
+                        self.w.bits = (self.w.bits & !(#mask << self.o)) | (((value as #rty) & #mask) << self.o);
                         self.w
                     }
                 }
@@ -609,8 +606,8 @@ pub fn fields(
                 }
             });
 
-            let n_entry = if f.dim.is_some() {
-                quote! {n: u32,}
+            let o_entry = if f.dim.is_some() {
+                quote! {o: u32,}
             } else {
                 quote! {}
             };
@@ -620,7 +617,7 @@ pub fn fields(
                 #[doc = #doc]
                 pub struct #_pc_w<'a> {
                     w: &'a mut W,
-                    #n_entry
+                    #o_entry
                 }
 
                 impl<'a> #_pc_w<'a> {
@@ -630,25 +627,25 @@ pub fn fields(
 
             let sc = &f.sc;
             if let Some((first, dim, increment, suffixes)) = f.dim.clone() {
+                let offset_calc = calculate_offset(first, increment, offset);
                 let doc = &f.description;
                 w_impl_items.push(quote! {
                     #[doc = #doc]
                     #[inline(always)]
                     pub unsafe fn #sc(&mut self, n: u32) -> #_pc_w {
-                        #_pc_w { w: self, n }
+                        #_pc_w { w: self, o: #offset_calc }
                     }
                 });
                 for (i, suffix) in (0..dim).zip(suffixes.iter()) {
-                    let n = first + i;
-                    let n = util::unsuffixed(n as u64);
                     let offset = offset + (i as u64)*(increment as u64);
                     let sc_n = Ident::new(&util::replace_suffix(&f.name.to_sanitized_snake_case(), &suffix), Span::call_site());
                     let doc = util::replace_suffix(&description_with_bits(&f.description, offset, width), &suffix);
+                    let offset = util::unsuffixed(offset as u64);
                     w_impl_items.push(quote! {
                         #[doc = #doc]
                         #[inline(always)]
                         pub fn #sc_n(&mut self) -> #_pc_w {
-                            #_pc_w { w: self, n: #n }
+                            #_pc_w { w: self, o: #offset }
                         }
                     });
                 }
@@ -687,12 +684,12 @@ fn unsafety(write_constraint: Option<&WriteConstraint>, width: u32) -> Option<Id
     }
 }
 
-fn calculate_offset(n: TokenStream, first: u32, increment: u32, offset: u64) -> TokenStream {
+fn calculate_offset(first: u32, increment: u32, offset: u64) -> TokenStream {
     let mut res = if first != 0 {
         let first = util::unsuffixed(first as u64);
-        quote! { #n - #first }
+        quote! { n - #first }
     } else {
-        quote! { #n }
+        quote! { n }
     };
     if increment != 1 {
         let increment = util::unsuffixed(increment as u64);
@@ -704,10 +701,9 @@ fn calculate_offset(n: TokenStream, first: u32, increment: u32, offset: u64) -> 
     }
     if offset !=0 {
         let offset = &util::unsuffixed(offset);
-        quote! { let o = #res + #offset; }
-    } else {
-        quote! { let o = #res; }
+        res = quote! { #res + #offset };
     }
+    res
 }
 
 struct Variant {
