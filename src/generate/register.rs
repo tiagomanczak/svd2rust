@@ -106,6 +106,7 @@ pub fn render(
                 peripheral,
                 all_peripherals,
                 &rty,
+                &name_pc,
                 res_val,
                 access,
                 &mut mod_items,
@@ -207,6 +208,7 @@ pub fn fields(
     peripheral: &Peripheral,
     all_peripherals: &[Peripheral],
     rty: &Ident,
+    rname: &Ident,
     reset_value: Option<u64>,
     access: Access,
     mod_items: &mut Vec<TokenStream>,
@@ -409,7 +411,7 @@ pub fn fields(
                     let has_reserved_variant = evs.values.len() != (1 << width);
                     let variants = Variant::from_enumerated_values(evs)?;
 
-                    add_from_variants(mod_items, &variants, pc_r, &f, description, rv);
+                    add_from_variants(mod_items, &variants, pc_r, &f, description, rv, &rty, mask);
 
                     let mut enum_items = vec![];
 
@@ -502,6 +504,7 @@ pub fn fields(
 
         if can_write {
             let mut proxy_items = vec![];
+            let offset_ty = util::to_offset_ty(offset);
 
             let mut unsafety = unsafety(f.write_constraint, width);
 
@@ -509,7 +512,7 @@ pub fn fields(
                 let variants = Variant::from_enumerated_values(evs)?;
 
                 if variants.len() == 1 << width {
-                    unsafety = None;
+                    unsafety = Ident::new("Safe", Span::call_site());
                 }
 
                 if Some(evs) != evs_r.as_ref() {
@@ -521,10 +524,10 @@ pub fn fields(
                     });
 
                     if base.is_none() {
-                        add_from_variants(mod_items, &variants, pc_w, &f, description, rv);
+                        add_from_variants(mod_items, &variants, pc_w, &f, description, rv, &rty, mask);
                     }
                 }
-
+/*
                 proxy_items.push(quote! {
                     ///Writes `variant` to the field
                     #[inline(always)]
@@ -534,32 +537,34 @@ pub fn fields(
                         }
                     }
                 });
+*/
+                if base.is_none() {
+                    for v in &variants {
+                        let pc = &v.pc;
+                        let sc = &v.sc;
 
-                for v in &variants {
-                    let pc = &v.pc;
-                    let sc = &v.sc;
-
-                    let doc = util::escape_brackets(util::respace(&v.doc).as_ref());
-                    if let Some(enum_) = base_pc_w.as_ref() {
-                        proxy_items.push(quote! {
-                            #[doc = #doc]
-                            #[inline(always)]
-                            pub fn #sc(self) -> &'a mut W {
-                                self.variant(#enum_::#pc)
-                            }
-                        });
-                    } else {
-                        proxy_items.push(quote! {
-                            #[doc = #doc]
-                            #[inline(always)]
-                            pub fn #sc(self) -> &'a mut W {
-                                self.variant(#pc_w::#pc)
-                            }
-                        });
+                        let doc = util::escape_brackets(util::respace(&v.doc).as_ref());
+                        if let Some(enum_) = base_pc_w.as_ref() {
+                            proxy_items.push(quote! {
+                                #[doc = #doc]
+                                #[inline(always)]
+                                pub fn #sc(self) -> &'a mut crate::W<#rty, REG> {
+                                    self.variant(#enum_::#pc)
+                                }
+                            });
+                        } else {
+                            proxy_items.push(quote! {
+                                #[doc = #doc]
+                                #[inline(always)]
+                                pub fn #sc(self) -> &'a mut crate::W<#rty, REG> {
+                                    self.variant(#pc_w::#pc)
+                                }
+                            });
+                        }
                     }
                 }
             }
-
+/*
             if width == 1 {
                 proxy_items.push(quote! {
                     ///Sets the field bit
@@ -576,7 +581,7 @@ pub fn fields(
                 });
             }
 
-            proxy_items.push(if f.dim.is_some() {
+            proxy_items.push(/*if f.dim.is_some() {
                 quote! {
                     ///Writes raw bits to the field
                     #[inline(always)]
@@ -585,7 +590,7 @@ pub fn fields(
                         self.w
                     }
                 }
-            } else if offset != 0 {
+            } else*/ if offset != 0 {
                 let offset = &util::unsuffixed(offset);
                 quote! {
                     ///Writes raw bits to the field
@@ -604,29 +609,27 @@ pub fn fields(
                         self.w
                     }
                 }
-            });
-
+            });*/
+/*
             let o_entry = if f.dim.is_some() {
                 quote! {o: usize,}
             } else {
                 quote! {}
             };
-
+*/
             let doc = format!("Write proxy for field `{}`", f.name);
             mod_items.push(quote! {
                 #[doc = #doc]
-                pub struct #_pc_w<'a> {
-                    w: &'a mut W,
-                    #o_entry
-                }
+                pub type #_pc_w<'a, REG, O> = crate::WProxy<'a, #rty, REG, #fty, #pc_w, O, crate::#unsafety>;
 
-                impl<'a> #_pc_w<'a> {
+                impl<'a, REG, O> #_pc_w<'a, REG, O>
+                where REG: crate::Writable, O: crate::BitOffset {
                     #(#proxy_items)*
                 }
             });
 
             let sc = &f.sc;
-            if let Some((first, dim, increment, suffixes)) = f.dim.clone() {
+            /*if let Some((first, dim, increment, suffixes)) = f.dim.clone() {
                 let offset_calc = calculate_offset(first, increment, offset);
                 let doc = &f.description;
                 w_impl_items.push(quote! {
@@ -638,6 +641,7 @@ pub fn fields(
                 });
                 for (i, suffix) in (0..dim).zip(suffixes.iter()) {
                     let offset = offset + (i as u64)*(increment as u64);
+                    let offset_ty = util::to_offset_ty(offset);
                     let sc_n = Ident::new(&util::replace_suffix(&f.name.to_sanitized_snake_case(), &suffix), Span::call_site());
                     let doc = util::replace_suffix(&description_with_bits(&f.description, offset, width), &suffix);
                     let offset = util::unsuffixed(offset as u64);
@@ -649,13 +653,13 @@ pub fn fields(
                         }
                     });
                 }
-            } else {
+            } else*/ {
                 let doc = description_with_bits(&f.description, f.offset, width);
                 w_impl_items.push(quote! {
                     #[doc = #doc]
                     #[inline(always)]
-                    pub fn #sc(&mut self) -> #_pc_w {
-                        #_pc_w { w: self }
+                    pub fn #sc(&mut self) -> #_pc_w<super::#rname, crate::#offset_ty> {
+                        #_pc_w::new(self)
                     }
                 });
             }
@@ -665,22 +669,22 @@ pub fn fields(
     Ok(())
 }
 
-fn unsafety(write_constraint: Option<&WriteConstraint>, width: u32) -> Option<Ident> {
+fn unsafety(write_constraint: Option<&WriteConstraint>, width: u32) -> Ident {
     match &write_constraint {
         Some(&WriteConstraint::Range(range))
             if u64::from(range.min) == 0 && u64::from(range.max) == 1u64.wrapping_neg() >> (64-width) =>
         {
             // the SVD has acknowledged that it's safe to write
             // any value that can fit in the field
-            None
+            Ident::new("Safe", Span::call_site())
         }
         None if width == 1 => {
             // the field is one bit wide, so we assume it's legal to write
             // either value into it or it wouldn't exist; despite that
             // if a writeConstraint exists then respect it
-            None
+            Ident::new("Safe", Span::call_site())
         }
-        _ => Some(Ident::new("unsafe", Span::call_site())),
+        _ => Ident::new("Unsafe", Span::call_site()),
     }
 }
 
@@ -740,7 +744,7 @@ impl Variant {
     }
 }
 
-fn add_from_variants(mod_items: &mut Vec<TokenStream>, variants: &Vec<Variant>, pc: &Ident, f: &F, desc: &str, reset_value: Option<u64>) {
+fn add_from_variants(mod_items: &mut Vec<TokenStream>, variants: &Vec<Variant>, pc: &Ident, f: &F, desc: &str, reset_value: Option<u64>, rty: &Ident, mask: &TokenStream) {
     let fty = &f.ty;
 
     let (repr, cast) = if f.ty == "bool" {
@@ -774,6 +778,10 @@ fn add_from_variants(mod_items: &mut Vec<TokenStream>, variants: &Vec<Variant>, 
         #repr
         pub enum #pc {
             #(#vars),*
+        }
+        impl crate::VariantMark for #pc {}
+        impl crate::Mask<#rty> for #pc {
+            const MASK: #rty = #mask;
         }
         impl From<#pc> for #fty {
             #[inline(always)]

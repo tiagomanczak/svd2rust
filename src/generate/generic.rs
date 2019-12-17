@@ -225,29 +225,30 @@ pub struct Safe;
 ///Marker struct for register/field with unsafe write
 pub struct Unsafe;
 
-///Contains bit offset of field
+///Contains offset of field
 pub trait BitOffset {
+    ///Field offset value
     const OFFSET: usize;
 }
 
+///Mask of field
+pub trait Mask<U> {
+    ///Value of mask of field
+    const MASK: U;
+}
+
 /// Marker trait for Enums
-pub trait Variant {}
+pub trait VariantMark {}
 
 ///Write Proxy
-pub struct WProxy<'a, U, REG, N, FI, O, S>
-where
-    REG: Writable,
-    FI: Writable,
-{
+pub struct WProxy<'a, U, REG, N, FI, O, S> where REG: Writable {
     w: &'a mut W<U, REG>,
     _field: marker::PhantomData<(FI, N, O, S)>,
 }
 
-impl<'a, U, REG, N, FI, O, S> WProxy<'a, U, REG, N, FI, O, S>
-where
-    REG: Writable,
-    FI: Writable,
-{
+impl<'a, U, REG, N, FI, O, S> WProxy<'a, U, REG, N, FI, O, S> where REG: Writable {
+    ///Construct new write proxy
+    #[inline(always)]
     pub(crate) fn new(w: &'a mut W<U, REG>) -> Self {
         Self {
             w,
@@ -261,7 +262,7 @@ macro_rules! impl_bit_proxy {
         impl<'a, REG, FI, O> WProxy<'a, $U, REG, bool, FI, O, Safe>
         where
             REG: Writable,
-            FI: Writable + Into<bool>,
+            FI: Into<bool>,
             O: BitOffset,
         {
             ///Sets the field bit"
@@ -294,7 +295,7 @@ macro_rules! impl_proxy_safe {
         impl<'a, REG, FI, O> WProxy<'a, $U, REG, $N, FI, O, Safe>
         where
             REG: Writable,
-            FI: Writable + Mask<$U>,
+            FI: Mask<$U>,
             O: BitOffset,
         {
             ///Writes raw bits to the field"
@@ -307,7 +308,7 @@ macro_rules! impl_proxy_safe {
         impl<'a, REG, FI, O> WProxy<'a, $U, REG, $N, FI, O, Safe>
         where
             REG: Writable,
-            FI: Writable + Mask<$U> + Into<$N> + Variant,
+            FI: Mask<$U> + Into<$N> + VariantMark,
             O: BitOffset,
         {
             ///Writes `variant` to the field
@@ -323,7 +324,7 @@ macro_rules! impl_proxy_unsafe {
         impl<'a, REG, FI, O> WProxy<'a, $U, REG, $N, FI, O, Unsafe>
         where
             REG: Writable,
-            FI: Writable + Mask<$U>,
+            FI: Mask<$U>,
             O: BitOffset,
         {
             ///Writes raw bits to the field"
@@ -336,7 +337,7 @@ macro_rules! impl_proxy_unsafe {
         impl<'a, REG, FI, O> WProxy<'a, $U, REG, $N, FI, O, Unsafe>
         where
             REG: Writable,
-            FI: Writable + Mask<$U> + Into<$N> + Variant,
+            FI: Mask<$U> + Into<$N> + VariantMark,
             O: BitOffset,
         {
             ///Writes `variant` to the field
@@ -349,7 +350,8 @@ macro_rules! impl_proxy_unsafe {
 }
 
 macro_rules! offset {
-    ($Ox:ident => $val:literal) => {
+    ($Ox:ident, $val:literal) => {
+        #[allow(missing_docs)]
         pub struct $Ox;
         impl BitOffset for $Ox {
             const OFFSET: usize = $val;

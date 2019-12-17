@@ -272,8 +272,9 @@ pub fn generic_render(rsizes: &[u32]) -> Result<TokenStream> {
     let max_rsize = *rsizes.iter().max().unwrap();
     for i in 0..max_rsize {
         let oty = util::to_offset_ty(i as u64);
+        let val = util::unsuffixed(i as u64);
         code.push(quote! {
-            offset!(#oty, #i);
+            offset!(#oty, #val);
         });
     }
 

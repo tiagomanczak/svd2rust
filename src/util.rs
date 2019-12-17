@@ -260,8 +260,8 @@ pub fn unsuffixed_or_bool(n: u64, width: u32) -> TokenStream {
     }
 }
 
-pub fn to_offset_ty(offset: u64) -> TokenStream {
-    syn::parse_str::<syn::Lit>(&format!("O{}", offset)).unwrap().into_token_stream()
+pub fn to_offset_ty(offset: u64) -> Ident {
+    Ident::new(&format!("O{}", offset), Span::call_site())
 }
 
 pub trait U32Ext {
