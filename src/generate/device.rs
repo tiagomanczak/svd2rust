@@ -5,7 +5,7 @@ use std::io::Write;
 use crate::svd::Device;
 
 use crate::errors::*;
-use crate::util::{self, ToSanitizedUpperCase};
+use crate::util::{self, ToSanitizedUpperCase, U32Ext};
 use crate::Target;
 
 use crate::generate::{interrupt, peripheral};
@@ -159,11 +159,15 @@ pub fn render(
         }
     }
 
-    let generic_file = std::str::from_utf8(include_bytes!("generic.rs")).unwrap();
+    let tokens = match target {
+        Target::CortexM => generic_render(&[8, 16, 32])?,
+        Target::Msp430 => generic_render(&[8, 16, 32])?,
+        Target::RISCV => generic_render(&[32, 64])?,
+        _ => generic_render(&[8, 16, 32, 64])?,
+    };
     if generic_mod {
-        writeln!(File::create("generic.rs").unwrap(), "{}", generic_file).unwrap();
+        writeln!(File::create("generic.rs").unwrap(), "{}", tokens).unwrap();
     } else {
-        let tokens = syn::parse_file(generic_file).unwrap().into_token_stream();
 
         out.push(quote! {
             #[allow(unused_imports)]
@@ -256,4 +260,42 @@ pub fn render(
     });
 
     Ok(out)
+}
+
+/// Generates generic bit munging code
+pub fn generic_render(rsizes: &[u32]) -> Result<TokenStream> {
+    let generic_file = std::str::from_utf8(include_bytes!("generic.rs")).unwrap();
+    let tokens = syn::parse_file(generic_file).unwrap().into_token_stream();
+    let mut code = vec![];
+    code.push(tokens);
+
+    let max_rsize = *rsizes.iter().max().unwrap();
+    for i in 0..max_rsize {
+        let oty = util::to_offset_ty(i as u64);
+        code.push(quote! {
+            offset!(#oty, #i);
+        });
+    }
+
+    for &fsize in &[8, 16, 32, 64] {
+        if fsize > max_rsize {
+            break;
+        }
+        let fty = fsize.to_ty()?;
+        code.push(quote! {
+            impl_bit_proxy!(#fty);
+        });
+    }
+
+    for (i, rsize) in rsizes.iter().enumerate() {
+        let rty = rsize.to_ty()?;
+        for j in 0..=i {
+            let fty = rsizes[j].to_ty()?;
+            code.push(quote! {
+                impl_proxy_safe!(#rty, #fty);
+                impl_proxy_unsafe!(#rty, #fty);
+            });
+        }
+    }
+    Ok(quote! { #(#code)* })
 }
