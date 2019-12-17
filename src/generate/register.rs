@@ -352,7 +352,7 @@ pub fn fields(
                 r_impl_items.push(quote! {
                     #[doc = #doc]
                     #[inline(always)]
-                    pub unsafe fn #sc(&self, n: u32) -> #_pc_r {
+                    pub unsafe fn #sc(&self, n: usize) -> #_pc_r {
                         #_pc_r::new( #value )
                     }
                 });
@@ -607,7 +607,7 @@ pub fn fields(
             });
 
             let o_entry = if f.dim.is_some() {
-                quote! {o: u32,}
+                quote! {o: usize,}
             } else {
                 quote! {}
             };
@@ -632,7 +632,7 @@ pub fn fields(
                 w_impl_items.push(quote! {
                     #[doc = #doc]
                     #[inline(always)]
-                    pub unsafe fn #sc(&mut self, n: u32) -> #_pc_w {
+                    pub unsafe fn #sc(&mut self, n: usize) -> #_pc_w {
                         #_pc_w { w: self, o: #offset_calc }
                     }
                 });
