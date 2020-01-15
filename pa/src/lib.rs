@@ -37,8 +37,8 @@ pub trait ResetRegister: Writable {
 	fn reset(&self);
 }
 
-pub trait WriteRegister: Writable {
-	fn write<F>(&self, f: F) where F: FnOnce(&mut Self::Writer) -> &mut Self::Writer;
+pub trait WriteRegister<F>: Writable where F: FnOnce(&mut Self::Writer) -> &mut Self::Writer {
+	fn write_reg(&self, f: F);
 }
 
 pub trait WriteRegisterWithZero: Writable {
@@ -81,16 +81,16 @@ mod imp {
 		}
 	}
 
-	impl<U, REG> super::WriteRegister for Reg<U, REG>
+	impl<U, REG, F> super::WriteRegister<F> for Reg<U, REG>
 	where
-		Self: super::Writable<Writer=W<U, REG>>,
 		Self: ResetValue + Width<Type=U> + Writable,
-		U: Copy
+		U: Copy,
+		F: FnOnce(&mut Self::Writer) -> &mut Self::Writer + FnOnce(&mut W<U, Self>) -> &mut W<U, Self>
 	{
 		#[inline(always)]
-		fn write<F>(&self, f: F) where F: FnOnce(&mut Self::Writer) -> &mut Self::Writer
+		fn write_reg(&self, f: F)
 		{
-			self.write(f)
+			self.write::<F>(f)
 		}
 	}
 
