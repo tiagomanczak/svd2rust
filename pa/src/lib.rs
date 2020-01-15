@@ -23,8 +23,9 @@ pub trait ResetValue: Width {
     fn reset_value() -> Self::Type;
 }
 
+///Register size
 pub trait Width {
-    ///Register size
+    ///Possible values: `bool`, `u8`, `u16`, `u32`, `u64`
     type Type: Copy;
 }
 
@@ -36,25 +37,22 @@ pub trait ResetRegister: Writable {
     fn reset(&self);
 }
 
-pub trait WriteRegister<F>: Writable + ResetValue
-where
-    F: FnOnce(&mut Self::Writer) -> &mut Self::Writer,
-{
-    fn write(&self, f: F);
+pub trait WriteRegister: Writable + ResetValue {
+    fn write<F>(&self, f: F)
+    where
+        F: FnOnce(&mut Self::Writer) -> &mut Self::Writer;
 }
 
-pub trait WriteRegisterWithZero<F>: Writable
-where
-    F: FnOnce(&mut Self::Writer) -> &mut Self::Writer,
-{
-    fn write_with_zero(&self, f: F);
+pub trait WriteRegisterWithZero: Writable {
+    fn write_with_zero<F>(&self, f: F)
+    where
+        F: FnOnce(&mut Self::Writer) -> &mut Self::Writer;
 }
 
-pub trait ModifyRegister<F>: Readable + Writable
-where
-    for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer,
-{
-    fn modify(&self, f: F);
+pub trait ModifyRegister: Readable + Writable {
+    fn modify<F>(&self, f: F)
+    where
+        for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer;
 }
 
 mod imp {
@@ -81,7 +79,7 @@ mod imp {
 
     impl<U, REG> super::ReadRegister for Reg<U, REG>
     where
-        Self: Readable,
+        Self: Readable + super::Readable<Reader = R<U, Self>>,
     {
         #[inline(always)]
         fn read(&self) -> Self::Reader {
@@ -90,7 +88,7 @@ mod imp {
     }
     impl<U, REG> super::ResetRegister for Reg<U, REG>
     where
-        Self: ResetValue + Width<Type = U> + Writable,
+        Self: ResetValue + Width<Type = U> + Writable + super::Writable<Writer = W<U, Self>>,
         U: Copy,
     {
         #[inline(always)]
@@ -99,42 +97,48 @@ mod imp {
         }
     }
 
-    impl<U, REG, F> super::WriteRegister<F> for Reg<U, REG>
+    impl<U, REG> super::WriteRegister for Reg<U, REG>
     where
-        Self: ResetValue + Width<Type = U> + Writable,
+        Self: ResetValue + Width<Type = U> + Writable + super::Writable<Writer = W<U, Self>>,
         U: Copy,
-        F: FnOnce(&mut Self::Writer) -> &mut Self::Writer
-            + FnOnce(&mut W<U, Self>) -> &mut W<U, Self>,
     {
         #[inline(always)]
-        fn write(&self, f: F) {
-            self.write::<F>(f)
+        fn write<F>(&self, f: F)
+        where
+            F: FnOnce(&mut Self::Writer) -> &mut Self::Writer,
+        {
+            self.write(f)
         }
     }
 
-    impl<U, REG, F> super::WriteRegisterWithZero<F> for Reg<U, REG>
+    impl<U, REG> super::WriteRegisterWithZero for Reg<U, REG>
     where
-        Self: Writable,
+        Self: Writable + super::Writable<Writer = W<U, Self>>,
         U: Copy + Default,
-        F: FnOnce(&mut Self::Writer) -> &mut Self::Writer
-            + FnOnce(&mut W<U, Self>) -> &mut W<U, Self>,
     {
         #[inline(always)]
-        fn write_with_zero(&self, f: F) {
-            self.write_with_zero::<F>(f)
+        fn write_with_zero<F>(&self, f: F)
+        where
+            F: FnOnce(&mut Self::Writer) -> &mut Self::Writer,
+        {
+            self.write_with_zero(f)
         }
     }
 
-    impl<U, REG, F> super::ModifyRegister<F> for Reg<U, REG>
+    impl<U, REG> super::ModifyRegister for Reg<U, REG>
     where
-        Self: Readable + Writable,
+        Self: Readable
+            + Writable
+            + super::Readable<Reader = R<U, Self>>
+            + super::Writable<Writer = W<U, Self>>,
         U: Copy + Default,
-        for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer
-            + FnOnce(&R<U, Self>, &'w mut W<U, Self>) -> &'w mut W<U, Self>,
     {
         #[inline(always)]
-        fn modify(&self, f: F) {
-            self.modify::<F>(f)
+        fn modify<F>(&self, f: F)
+        where
+            for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer,
+        {
+            self.modify(f)
         }
     }
 
