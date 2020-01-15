@@ -1,3 +1,68 @@
+#![no_std]
+
+
+///This trait shows that register has `read` method
+///
+///Registers marked with `Writable` can be also `modify`'ed
+pub trait Readable {
+    type Reader;
+}
+
+///This trait shows that register has `write`, `write_with_zero` and `reset` method
+///
+///Registers marked with `Readable` can be also `modify`'ed
+pub trait Writable {
+    type Writer;
+}
+
+///Reset value of the register
+///
+///This value is initial value for `write` method.
+///It can be also directly writed to register by `reset` method.
+pub trait ResetValue: Width {
+    ///Reset value of the register
+    fn reset_value() -> Self::Type;
+}
+
+pub trait Width {
+    ///Register size
+    type Type: Copy;
+}
+
+//------------------------
+///This structure provides volatile access to register
+pub struct Reg<U, REG> {
+    register: vcell::VolatileCell<U>,
+    _marker: core::marker::PhantomData<REG>,
+}
+impl<U, REG> Width for Reg<U, REG> where U: Copy {
+    type Type = U;
+}
+//--------------------------
+
+pub trait ReadRegister: Readable {
+    fn read(&self) -> Self::Reader;
+}
+
+pub trait ResetRegister: Writable {
+    fn reset(&self);
+}
+
+pub trait WriteRegister: Writable {
+    fn write<F>(&self, f: F) where F: FnOnce(&mut Self::Writer) -> &mut Self::Writer;
+}
+
+pub trait WriteRegisterWithZero: Writable {
+    fn write_with_zero<F>(&self, f: F) where F: FnOnce(&mut Self::Writer) -> &mut Self::Writer;
+}
+
+pub trait ModifyRegister: Readable + Writable {
+    fn modify<F>(&self, f: F)
+    where
+        for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer;
+}
+
+/*
 use core::marker;
 
 ///This trait shows that register has `read` method
@@ -10,7 +75,16 @@ pub trait Readable {}
 ///Registers marked with `Readable` can be also `modify`'ed
 pub trait Writable {}
 
-pub use pa::{Width, ResetValue};
+///Reset value of the register
+///
+///This value is initial value for `write` method.
+///It can be also directly writed to register by `reset` method.
+pub trait ResetValue {
+    ///Register size
+    type Type;
+    ///Reset value of the register
+    fn reset_value() -> Self::Type;
+}
 
 ///This structure provides volatile access to register
 pub struct Reg<U, REG> {
@@ -19,10 +93,6 @@ pub struct Reg<U, REG> {
 }
 
 unsafe impl<U: Send, REG> Send for Reg<U, REG> { }
-
-impl<U, REG> Width for Reg<U, REG> where U: Copy {
-    type Type = U;
-}
 
 impl<U, REG> Reg<U, REG>
 where
@@ -144,7 +214,7 @@ where
 ///Result of the [`read`](Reg::read) method of a register.
 ///Also it can be used in the [`modify`](Reg::read) method
 pub struct R<U, T> {
-    pub(crate) bits: U,
+    pub bits: U,
     _reg: marker::PhantomData<T>,
 }
 
@@ -154,7 +224,7 @@ where
 {
     ///Create new instance of reader
     #[inline(always)]
-    pub(crate) fn new(bits: U) -> Self {
+    pub fn new(bits: U) -> Self {
         Self {
             bits,
             _reg: marker::PhantomData,
@@ -201,7 +271,7 @@ impl<FI> R<bool, FI> {
 ///Used as an argument to the closures in the [`write`](Reg::write) and [`modify`](Reg::modify) methods of the register
 pub struct W<U, REG> {
     ///Writable bits
-    pub(crate) bits: U,
+    pub bits: U,
     _reg: marker::PhantomData<REG>,
 }
 
@@ -221,4 +291,4 @@ pub enum Variant<U, T> {
     Val(T),
     ///Raw bits
     Res(U),
-}
+}*/
