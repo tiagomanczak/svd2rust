@@ -20,8 +20,11 @@ pub struct Reg<U, REG> {
 
 unsafe impl<U: Send, REG> Send for Reg<U, REG> { }
 
-impl<U, REG> Width for Reg<U, REG> where U: Copy {
-    type Type = U;
+impl<U, REG> pa::Width for Reg<U, REG> where U: Copy {
+	type Type = U;
+}
+impl<U, REG> pa::Readable for Reg<U, REG> where Self: Readable {
+	type Reader = R<U, REG>;
 }
 
 impl<U, REG> Reg<U, REG>
