@@ -1,32 +1,40 @@
 #![no_std]
 
-///This trait shows that register has `read` method
-///
-///Registers marked with `Writable` can be also `modify`'ed
-pub trait Readable {
-    type Reader;
-}
-
-///This trait shows that register has `write`, `write_with_zero` and `reset` method
-///
-///Registers marked with `Readable` can be also `modify`'ed
-pub trait Writable {
-    type Writer;
+///Register size
+pub trait Size {
+    ///Possible values: `bool`, `u8`, `u16`, `u32`, `u64`
+    type Ux: Copy;
 }
 
 ///Reset value of the register
 ///
 ///This value is initial value for `write` method.
 ///It can be also directly writed to register by `reset` method.
-pub trait ResetValue: Width {
+pub trait ResetValue: Size {
     ///Reset value of the register
-    fn reset_value() -> Self::Type;
+    fn reset_value() -> Self::Ux;
 }
 
-///Register size
-pub trait Width {
-    ///Possible values: `bool`, `u8`, `u16`, `u32`, `u64`
-    type Type: Copy;
+pub trait GetBits: Size {
+    fn bits(&self) -> Self::Ux;
+}
+
+pub trait SetBits: Size {
+    unsafe fn bits(&mut self, bits: Self::Ux) -> &mut Self;
+}
+
+///This trait shows that register has `read` method
+///
+///Registers marked with `Writable` can be also `modify`'ed
+pub trait Readable {
+    type Reader: GetBits;
+}
+
+///This trait shows that register has `write`, `write_with_zero` and `reset` method
+///
+///Registers marked with `Readable` can be also `modify`'ed
+pub trait Writable {
+    type Writer: SetBits;
 }
 
 pub trait ReadRegister: Readable {
@@ -55,24 +63,27 @@ pub trait ModifyRegister: Readable + Writable {
         for<'w> F: FnOnce(&Self::Reader, &'w mut Self::Writer) -> &'w mut Self::Writer;
 }
 
+/// implementation in generic.rs
 mod imp {
-    pub use super::{ResetValue, Width};
+    pub use super::{ResetValue, Size};
 
-    impl<U, REG> super::Width for Reg<U, REG>
+    impl<U, REG> super::Size for Reg<U, REG>
     where
         U: Copy,
     {
-        type Type = U;
+        type Ux = U;
     }
     impl<U, REG> super::Readable for Reg<U, REG>
     where
         Self: Readable,
+        U: Copy,
     {
         type Reader = R<U, REG>;
     }
     impl<U, REG> super::Writable for Reg<U, REG>
     where
         Self: Writable,
+        U: Copy,
     {
         type Writer = W<U, REG>;
     }
@@ -80,6 +91,7 @@ mod imp {
     impl<U, REG> super::ReadRegister for Reg<U, REG>
     where
         Self: Readable + super::Readable<Reader = R<U, Self>>,
+        U: Copy,
     {
         #[inline(always)]
         fn read(&self) -> Self::Reader {
@@ -88,7 +100,7 @@ mod imp {
     }
     impl<U, REG> super::ResetRegister for Reg<U, REG>
     where
-        Self: ResetValue + Width<Type = U> + Writable + super::Writable<Writer = W<U, Self>>,
+        Self: ResetValue + Size<Ux = U> + Writable + super::Writable<Writer = W<U, Self>>,
         U: Copy,
     {
         #[inline(always)]
@@ -99,7 +111,7 @@ mod imp {
 
     impl<U, REG> super::WriteRegister for Reg<U, REG>
     where
-        Self: ResetValue + Width<Type = U> + Writable + super::Writable<Writer = W<U, Self>>,
+        Self: ResetValue + Size<Ux = U> + Writable + super::Writable<Writer = W<U, Self>>,
         U: Copy,
     {
         #[inline(always)]
@@ -190,7 +202,7 @@ mod imp {
 
     impl<U, REG> Reg<U, REG>
     where
-        Self: ResetValue + Width<Type = U> + Writable,
+        Self: ResetValue + Size<Ux = U> + Writable,
         U: Copy,
     {
         ///Writes the reset value to `Writable` register
@@ -200,13 +212,6 @@ mod imp {
         pub fn reset(&self) {
             self.register.set(Self::reset_value())
         }
-    }
-
-    impl<U, REG> Reg<U, REG>
-    where
-        Self: ResetValue + Width<Type = U> + Writable,
-        U: Copy,
-    {
         ///Writes bits to `Writable` register
         ///
         ///You can write raw bits into a register:
@@ -313,6 +318,13 @@ mod imp {
         _reg: marker::PhantomData<T>,
     }
 
+    impl<U, T> super::Size for R<U, T>
+    where
+        U: Copy,
+    {
+        type Ux = U;
+    }
+
     impl<U, T> R<U, T>
     where
         U: Copy,
@@ -328,6 +340,15 @@ mod imp {
         ///Read raw bits from register/field
         #[inline(always)]
         pub fn bits(&self) -> U {
+            self.bits
+        }
+    }
+
+    impl<U, T> super::GetBits for R<U, T>
+    where
+        U: Copy,
+    {
+        fn bits(&self) -> U {
             self.bits
         }
     }
@@ -370,12 +391,29 @@ mod imp {
         _reg: marker::PhantomData<REG>,
     }
 
+    impl<U, REG> super::Size for W<U, REG>
+    where
+        U: Copy,
+    {
+        type Ux = U;
+    }
+
     impl<U, REG> W<U, REG> {
         ///Writes raw bits to the register
         #[inline(always)]
         pub unsafe fn bits(&mut self, bits: U) -> &mut Self {
             self.bits = bits;
             self
+        }
+    }
+
+    impl<U, T> super::SetBits for W<U, T>
+    where
+        U: Copy,
+    {
+        #[inline(always)]
+        unsafe fn bits(&mut self, bits: U) -> &mut Self {
+            self.bits(bits)
         }
     }
 
