@@ -290,7 +290,7 @@ impl<FI> FieldReader<bool, FI> {
     }
 }
 
-///Write Proxy
+///Write field Proxy
 pub struct WProxy<'a, U, REG, N, FI, const S: u8, const O: u8>
 where
     REG: Writable + RegisterSpec<Ux = U>,
@@ -299,14 +299,28 @@ where
     w: &'a mut REG::Writer,
     _field: marker::PhantomData<(N, FI)>,
 }
-///Bit-wise write proxy
+///Write fieldarray Proxy
+pub struct WArrayProxy<'a, U, REG, N, FI, const S: u8>
+where
+    REG: Writable + RegisterSpec<Ux = U>,
+    FI: Into<N>,
+{
+    w: &'a mut REG::Writer,
+    offset: u8,
+    _field: marker::PhantomData<(N, FI)>,
+}
+
+///Bit-wise write field proxy
 pub type WBitProxy<'a, U, REG, FI, const O: u8> = WProxy<'a, U, REG, bool, FI, 1, O>;
+///Bit-wise write field array proxy
+pub type WBitArrayProxy<'a, U, REG, FI> = WArrayProxy<'a, U, REG, bool, FI, 1>;
+
 impl<'a, U, REG, N, FI, const S: u8, const O: u8> WProxy<'a, U, REG, N, FI, S, O>
 where
     REG: Writable + RegisterSpec<Ux = U>,
     FI: Into<N>,
 {
-    /// Creates a new instance of the reader.
+    /// Creates a new instance of the writer.
     #[allow(unused)]
     #[inline(always)]
     pub(crate) fn new(w: &'a mut REG::Writer) -> Self {
@@ -316,88 +330,111 @@ where
         }
     }
 }
-impl<'a, REG, N, FI, const WI: u8, const OF: u8> WProxy<'a, u32, REG, N, FI, WI, OF>
+impl<'a, U, REG, N, FI, const S: u8> WArrayProxy<'a, U, REG, N, FI, S>
 where
-    REG: Writable + RegisterSpec<Ux = u32>,
-    N: Into<u32>,
+    REG: Writable + RegisterSpec<Ux = U>,
     FI: Into<N>,
 {
-    const MASK: u32 = u32::MAX >> (32 - { WI });
-    ///Writes raw bits to the field"
+    /// Creates a new instance of the writer.
+    #[allow(unused)]
     #[inline(always)]
-    pub unsafe fn bits(self, value: N) -> &'a mut REG::Writer {
-        self.w.bits =
-            (self.w.bits & !(Self::MASK << { OF })) | ((value.into() & Self::MASK) << { OF });
-        self.w
-    }
-    ///Writes `variant` to the field
-    #[inline(always)]
-    pub fn variant(self, variant: FI) -> &'a mut REG::Writer {
-        unsafe { self.bits(variant.into()) }
-    }
-}
-impl<'a, REG, FI, const OF: u8> WBitProxy<'a, u32, REG, FI, OF>
-where
-    REG: Writable + RegisterSpec<Ux = u32>,
-    FI: Into<bool>,
-{
-    ///Writes bit to the field"
-    #[inline(always)]
-    pub fn bit(self, value: bool) -> &'a mut REG::Writer {
-        self.w.bits = (self.w.bits & !(0x01 << { OF })) | (((value as u32) & 0x01) << { OF });
-        self.w
-    }
-    ///Sets the field bit"
-    #[inline(always)]
-    pub fn set_bit(self) -> &'a mut REG::Writer {
-        self.bit(true)
-    }
-    ///Clears the field bit"
-    #[inline(always)]
-    pub fn clear_bit(self) -> &'a mut REG::Writer {
-        self.bit(false)
+    pub(crate) fn new(w: &'a mut REG::Writer, offset: u8) -> Self {
+        Self {
+            w,
+            offset,
+            _field: marker::PhantomData,
+        }
     }
 }
 
-impl<'a, REG, N, FI, const WI: u8, const OF: u8> WProxy<'a, u64, REG, N, FI, WI, OF>
-where
-    REG: Writable + RegisterSpec<Ux = u64>,
-    N: Into<u64>,
-    FI: Into<N>,
-{
-    const MASK: u64 = u64::MAX >> (64 - { WI });
-    ///Writes raw bits to the field"
-    #[inline(always)]
-    pub unsafe fn bits(self, value: N) -> &'a mut REG::Writer {
-        self.w.bits =
-            (self.w.bits & !(Self::MASK << { OF })) | ((value.into() & Self::MASK) << { OF });
-        self.w
-    }
-    ///Writes `variant` to the field
-    #[inline(always)]
-    pub fn variant(self, variant: FI) -> &'a mut REG::Writer {
-        unsafe { self.bits(variant.into()) }
+macro_rules! impl_proxy {
+    ($U:ty) => {
+        impl<'a, REG, N, FI, const WI: u8, const OF: u8> WProxy<'a, $U, REG, N, FI, WI, OF>
+        where
+            REG: Writable + RegisterSpec<Ux = $U>,
+            N: Into<$U>,
+            FI: Into<N>,
+        {
+            const MASK: $U = <$U>::MAX >> (<$U>::MAX.leading_ones() as u8 - { WI });
+            ///Writes raw bits to the field"
+            #[inline(always)]
+            pub unsafe fn bits(self, value: N) -> &'a mut REG::Writer {
+                self.w.bits =
+                    (self.w.bits & !(Self::MASK << { OF })) | ((value.into() & Self::MASK) << { OF });
+                self.w
+            }
+            ///Writes `variant` to the field
+            #[inline(always)]
+            pub fn variant(self, variant: FI) -> &'a mut REG::Writer {
+                unsafe { self.bits(variant.into()) }
+            }
+        }
+        impl<'a, REG, FI, const OF: u8> WBitProxy<'a, $U, REG, FI, OF>
+        where
+            REG: Writable + RegisterSpec<Ux = $U>,
+            FI: Into<bool>,
+        {
+            ///Writes bit to the field"
+            #[inline(always)]
+            pub fn bit(self, value: bool) -> &'a mut REG::Writer {
+                self.w.bits = (self.w.bits & !(0x01 << { OF })) | (((value as $U) & 0x01) << { OF });
+                self.w
+            }
+            ///Sets the field bit"
+            #[inline(always)]
+            pub fn set_bit(self) -> &'a mut REG::Writer {
+                self.bit(true)
+            }
+            ///Clears the field bit"
+            #[inline(always)]
+            pub fn clear_bit(self) -> &'a mut REG::Writer {
+                self.bit(false)
+            }
+        }
+        impl<'a, REG, N, FI, const WI: u8> WArrayProxy<'a, $U, REG, N, FI, WI>
+        where
+            REG: Writable + RegisterSpec<Ux = $U>,
+            N: Into<$U>,
+            FI: Into<N>,
+        {
+            const MASK: $U = <$U>::MAX >> (<$U>::MAX.leading_ones() as u8 - { WI });
+            ///Writes raw bits to the field"
+            #[inline(always)]
+            pub unsafe fn bits(self, value: N) -> &'a mut REG::Writer {
+                self.w.bits =
+                    (self.w.bits & !(Self::MASK << self.offset)) | ((value.into() & Self::MASK) << self.offset);
+                self.w
+            }
+            ///Writes `variant` to the field
+            #[inline(always)]
+            pub fn variant(self, variant: FI) -> &'a mut REG::Writer {
+                unsafe { self.bits(variant.into()) }
+            }
+        }
+        impl<'a, REG, FI> WBitArrayProxy<'a, $U, REG, FI>
+        where
+            REG: Writable + RegisterSpec<Ux = $U>,
+            FI: Into<bool>,
+        {
+            ///Writes bit to the field"
+            #[inline(always)]
+            pub fn bit(self, value: bool) -> &'a mut REG::Writer {
+                self.w.bits = (self.w.bits & !(0x01 << self.offset)) | (((value as $U) & 0x01) << self.offset);
+                self.w
+            }
+            ///Sets the field bit"
+            #[inline(always)]
+            pub fn set_bit(self) -> &'a mut REG::Writer {
+                self.bit(true)
+            }
+            ///Clears the field bit"
+            #[inline(always)]
+            pub fn clear_bit(self) -> &'a mut REG::Writer {
+                self.bit(false)
+            }
+        }
     }
 }
-impl<'a, REG, FI, const OF: u8> WBitProxy<'a, u64, REG, FI, OF>
-where
-    REG: Writable + RegisterSpec<Ux = u64>,
-    FI: Into<bool>,
-{
-    ///Writes bit to the field"
-    #[inline(always)]
-    pub fn bit(self, value: bool) -> &'a mut REG::Writer {
-        self.w.bits = (self.w.bits & !(0x01 << { OF })) | (((value as u64) & 0x01) << { OF });
-        self.w
-    }
-    ///Sets the field bit"
-    #[inline(always)]
-    pub fn set_bit(self) -> &'a mut REG::Writer {
-        self.bit(true)
-    }
-    ///Clears the field bit"
-    #[inline(always)]
-    pub fn clear_bit(self) -> &'a mut REG::Writer {
-        self.bit(false)
-    }
-}
+
+impl_proxy!(u32);
+impl_proxy!(u64);
