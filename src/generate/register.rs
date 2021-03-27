@@ -64,16 +64,8 @@ pub fn render(
         let desc = format!("Register `{}` reader", register.name);
         mod_items.extend(quote! {
             #[doc = #desc]
+            #[derive(derive_more::Deref)]
             pub struct R(crate::R<#name_uc_spec>);
-
-            impl core::ops::Deref for R {
-                type Target = crate::R<#name_uc_spec>;
-
-                #[inline(always)]
-                fn deref(&self) -> &Self::Target {
-                    &self.0
-                }
-            }
 
             impl core::convert::From<crate::R<#name_uc_spec>> for R {
                 fn from(reader: crate::R<#name_uc_spec>) -> Self {
@@ -88,23 +80,8 @@ pub fn render(
         let desc = format!("Register `{}` writer", register.name);
         mod_items.extend(quote! {
             #[doc = #desc]
+            #[derive(derive_more::Deref, derive_more::DerefMut)]
             pub struct W(crate::W<#name_uc_spec>);
-
-            impl core::ops::Deref for W {
-                type Target = crate::W<#name_uc_spec>;
-
-                #[inline(always)]
-                fn deref(&self) -> &Self::Target {
-                    &self.0
-                }
-            }
-
-            impl core::ops::DerefMut for W {
-                #[inline(always)]
-                fn deref_mut(&mut self) -> &mut Self::Target {
-                    &mut self.0
-                }
-            }
 
             impl core::convert::From<crate::W<#name_uc_spec>> for W {
                 fn from(writer: crate::W<#name_uc_spec>) -> Self {
@@ -527,6 +504,7 @@ pub fn fields(
 
                     mod_items.extend(quote! {
                         #[doc = #readerdoc]
+                        #[derive(derive_more::Deref)]
                         pub struct #name_pc_r(crate::FieldReader<#fty, #name_pc_a>);
 
                         impl #name_pc_r {
@@ -535,34 +513,17 @@ pub fn fields(
                             }
                             #enum_items
                         }
-
-                        impl core::ops::Deref for #name_pc_r {
-                            type Target = crate::FieldReader<#fty, #name_pc_a>;
-
-                            #[inline(always)]
-                            fn deref(&self) -> &Self::Target {
-                                &self.0
-                            }
-                        }
                     });
                 }
             } else {
                 mod_items.extend(quote! {
                     #[doc = #readerdoc]
+                    #[derive(derive_more::Deref)]
                     pub struct #name_pc_r(crate::FieldReader<#fty, #fty>);
 
                     impl #name_pc_r {
                         pub(crate) fn new(bits: #fty) -> Self {
                             #name_pc_r(crate::FieldReader::new(bits))
-                        }
-                    }
-
-                    impl core::ops::Deref for #name_pc_r {
-                        type Target = crate::FieldReader<#fty, #fty>;
-
-                        #[inline(always)]
-                        fn deref(&self) -> &Self::Target {
-                            &self.0
                         }
                     }
                 })
@@ -611,40 +572,61 @@ pub fn fields(
                 name_pc_aw = &fty;
             }
 
+            let doc;
             if let Some((_, _, _, _, suffixes_str)) = &field_dim {
-                let doc = format!(
+                doc = format!(
                     "Fields `{}` writer - {}",
                     util::replace_suffix(&f.name, suffixes_str),
                     description
                 );
-                if width == 1 {
-                    mod_items.extend(quote! {
-                        #[doc = #doc]
-                        pub type #name_pc_w<'a> = crate::WBitArrayProxy<'a, #rty, #name_uc_spec, #name_pc_aw>;
-                    });
+                let (proxy, fullproxy) = if width == 1 {
+                    (
+                        quote! { crate::WBitArrayProxy },
+                        quote! { crate::WBitArrayProxy<'a, #rty, #name_uc_spec, #name_pc_aw> }
+                    )
                 } else {
                     let width = &util::unsuffixed(width as _);
-                    mod_items.extend(quote! {
-                        #[doc = #doc]
-                        pub type #name_pc_w<'a> = crate::WArrayProxy<'a, #rty, #name_uc_spec, #fty, #name_pc_aw, #width>;
-                    });
-                }
+                    (
+                        quote! { crate::WArrayProxy },
+                        quote! { crate::WArrayProxy<'a, #rty, #name_uc_spec, #fty, #name_pc_aw, #width> }
+                    )
+                };
+                mod_items.extend(quote! {
+                    #[doc = #doc]
+                    #[derive(derive_more::Deref, derive_more::DerefMut)]
+                    pub struct #name_pc_w<'a>(#fullproxy);
+                    impl<'a> #name_pc_w<'a> {
+                        pub(crate) fn new(w: &'a mut W, offset: u8) -> Self {
+                            Self(#proxy::new(w, offset))
+                        }
+                    }
+                });
             } else {
-                let doc = format!("Field `{}` writer - {}", f.name, description);
-                if width == 1 {
+                doc = format!("Field `{}` writer - {}", f.name, description);
+                let (proxy, fullproxy) = if width == 1 {
                     let offset = &util::unsuffixed(offset);
-                    mod_items.extend(quote! {
-                        #[doc = #doc]
-                        pub type #name_pc_w<'a> = crate::WBitProxy<'a, #rty, #name_uc_spec, #name_pc_aw, #offset>;
-                    });
+                    (
+                        quote! { crate::WBitProxy },
+                        quote! { crate::WBitProxy<'a, #rty, #name_uc_spec, #name_pc_aw, #offset> }
+                    )
                 } else {
                     let width = &util::unsuffixed(width as _);
                     let offset = &util::unsuffixed(offset);
-                    mod_items.extend(quote! {
-                        #[doc = #doc]
-                        pub type #name_pc_w<'a> = crate::WProxy<'a, #rty, #name_uc_spec, #fty, #name_pc_aw, #width, #offset>;
-                    });
-                }
+                    (
+                        quote! { crate::WProxy },
+                        quote! { crate::WProxy<'a, #rty, #name_uc_spec, #fty, #name_pc_aw, #width, #offset> }
+                    )
+                };
+                mod_items.extend(quote! {
+                    #[doc = #doc]
+                    #[derive(derive_more::Deref, derive_more::DerefMut)]
+                    pub struct #name_pc_w<'a>(#fullproxy);
+                    impl<'a> #name_pc_w<'a> {
+                        pub(crate) fn new(w: &'a mut W) -> Self {
+                            Self(#proxy::new(w))
+                        }
+                    }
+                });
             }
 
             mod_items.extend(quote! {
