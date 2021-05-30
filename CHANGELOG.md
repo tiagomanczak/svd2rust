@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
+- Use modifiedWriteValues for 1-bitwise fields if present
 - Use `svd-parser` v0.11
 - More Cluster arrays are now emitted as an array rather than a list of
   elements.  An `ArrayProxy` wrapper is used when a Rust built-in array does not
