@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- GHA: rust dependency caching
 - Support of reading SVD from YAML or JSON files instead of XML
 
 ### Changed
