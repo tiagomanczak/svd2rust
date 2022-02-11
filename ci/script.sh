@@ -4,13 +4,12 @@ test_svd() {
     (
         cd $td &&
             curl -LO \
-                 https://raw.githubusercontent.com/posborne/cmsis-svd/master/data/$VENDOR/${1}.svd
+                 https://raw.githubusercontent.com/posborne/cmsis-svd/master/data/$vendor_name/${1}.svd
     )
 
     # NOTE we care about errors in svd2rust, but not about errors / warnings in rustfmt
-    local cwd=$(pwd)
     pushd $td
-    RUST_BACKTRACE=1 $cwd/target/$TARGET/release/svd2rust $strict $const_generic -i ${1}.svd
+    RUST_BACKTRACE=1 svd2rust $strict $const_generic -i ${1}.svd
 
     mv lib.rs src/lib.rs
 
@@ -23,9 +22,8 @@ test_svd_for_target() {
     curl -L --output $td/input.svd $2
 
     # NOTE we care about errors in svd2rust, but not about errors / warnings in rustfmt
-    local cwd=$(pwd)
     pushd $td
-    RUST_BACKTRACE=1 $cwd/target/$TARGET/release/svd2rust --target $1 -i input.svd
+    RUST_BACKTRACE=1 svd2rust --target $1 -i input.svd
 
     mv lib.rs src/lib.rs
 
@@ -35,40 +33,17 @@ test_svd_for_target() {
 }
 
 main() {
-    # Ensure that `cargo test` works to avoid surprising people, though it
-    # doesn't help with our actual coverage.
-    cargo test
-
-    if [ $TRAVIS_OS_NAME = windows ]; then
-        cargo check --target $TARGET
-        return
-    fi
-
-    cargo check --target $TARGET
-
     if [ -z ${VENDOR-} ]; then
         return
     fi
 
-    if [ $VENDOR = rustfmt ]; then
-        cargo fmt --all -- --check
-        return
+    vendor_name=${VENDOR}
+    readarray -d _ -t strarr <<< "$VENDOR"
+    if [ ${#strarr[*]} -gt 1 ]; then
+      vendor_name="${strarr[0]}"
     fi
 
-    if [ -z ${FEATURES-} ]; then
-      cargo build --target $TARGET --release
-    else
-      cargo build --target $TARGET --release --features $FEATURES
-    fi
-
-    case $TRAVIS_OS_NAME in
-        linux)
-            td=$(mktemp -d)
-            ;;
-        osx)
-            td=$(mktemp -d -t tmp)
-            ;;
-    esac
+    td=$(mktemp -d)
 
     case $OPTIONS in
         all)
@@ -91,9 +66,9 @@ main() {
 
     # test crate
     cargo init --name foo $td
-    echo 'cortex-m = "0.7.0"' >> $td/Cargo.toml
-    echo 'cortex-m-rt = "0.6.13"' >> $td/Cargo.toml
-    echo 'vcell = "0.1.2"' >> $td/Cargo.toml
+    echo 'cortex-m = "0.7.4"' >> $td/Cargo.toml
+    echo 'cortex-m-rt = "0.7.1"' >> $td/Cargo.toml
+    echo 'vcell = "0.1.3"' >> $td/Cargo.toml
     echo '[profile.dev]' >> $td/Cargo.toml
     echo 'incremental = false' >> $td/Cargo.toml
 
@@ -181,7 +156,7 @@ main() {
             # test_svd ATSAMR21G18A
         ;;
 
-        Freescale)
+        Freescale_1)
             # BAD-SVD bad enumeratedValue value
             # test_svd MKV56F20
             # test_svd MKV56F22
@@ -256,6 +231,9 @@ main() {
             test_svd MK82F25615
             # test_svd MKE14F16
             # test_svd MKE14Z7
+        ;;
+
+        Freescale_2)
             test_svd MKE15Z7
             # test_svd MKE16F16
             # test_svd MKE18F16
@@ -329,7 +307,7 @@ main() {
             # test_svd SKEAZN84
         ;;
 
-        Fujitsu)
+        Fujitsu_1)
             # OK
             test_svd MB9AF10xN
             test_svd MB9AF10xR
@@ -373,6 +351,12 @@ main() {
             test_svd MB9AFB4xL
             test_svd MB9AFB4xM
             test_svd MB9AFB4xN
+            test_svd S6E1A1
+            test_svd S6E2CC
+        ;;
+
+        Fujitsu_2)
+            # OK
             test_svd MB9B160L
             test_svd MB9B160R
             test_svd MB9B360L
@@ -429,8 +413,6 @@ main() {
             test_svd MB9BF61xT
             test_svd MB9BFD1xS
             test_svd MB9BFD1xT
-            test_svd S6E1A1
-            test_svd S6E2CC
         ;;
 
         Holtek)
