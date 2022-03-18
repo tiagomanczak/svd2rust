@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Constant values of field offsets and width
+
 ### Changed
 
 - Generate Rust arrays for all register & cluster arrays with sequential_addresses.
